@@ -1,0 +1,29 @@
+{
+  "name": "bifurcation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check",
+    "lint:fix": "biome check --write"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4",
+    "typescript": "^7",
+    "vite": "^8.1.5"
+  }
+}
