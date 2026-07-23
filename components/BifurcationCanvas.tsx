@@ -19,6 +19,29 @@ const LOW_RES_ZOOM_DELAY_MS = 100;
 const INITIAL_SCALE = 1.1;
 const INITIAL_CENTER: [number, number] = [3.4, 0.5];
 
+// World bounds the view is allowed to show. Panning/zooming is clamped so the
+// view rectangle stays inside these limits. A 1.0 buffer is added around the
+// established range so the edge of the shape can be centered on screen.
+const R_BOUNDS: [number, number] = [-3, 5];
+const X_BOUNDS: [number, number] = [-1, 2];
+
+function clampCenter(
+  center: [number, number],
+  effSize: [number, number],
+): [number, number] {
+  const clampAxis = (c: number, bounds: [number, number], span: number) => {
+    if (span >= bounds[1] - bounds[0]) return (bounds[0] + bounds[1]) / 2;
+    return Math.max(
+      bounds[0] + span / 2,
+      Math.min(bounds[1] - span / 2, c),
+    );
+  };
+  return [
+    clampAxis(center[0], R_BOUNDS, effSize[0]),
+    clampAxis(center[1], X_BOUNDS, effSize[1]),
+  ];
+}
+
 function getEffectiveSize(
   scale: number,
   resolution: [number, number],
@@ -75,7 +98,11 @@ function getTouchCenter(touches: TouchList): [number, number] {
 }
 
 function clampScale(value: number): number {
-  return Math.max(Math.min(value, 20), 1e-7);
+  return Math.max(Math.min(value, 5), 1e-7);
+}
+
+function formatCoord(n: number): string {
+  return n.toFixed(6);
 }
 
 export type InputUniforms = Omit<
@@ -111,6 +138,7 @@ export default function BifurcationCanvas({
   const [isDragging, setIsDragging] = useState(false);
   const [wasDragged, setWasDragged] = useState(false);
   const [lastMousePos, setLastMousePos] = useState<[number, number]>([0, 0]);
+  const [mouseWorld, setMouseWorld] = useState<[number, number] | null>(null);
 
   // Touch state
   const [isTouching, setIsTouching] = useState(false);
@@ -139,7 +167,12 @@ export default function BifurcationCanvas({
       const centerOffsetY = (normalizedY - 0.5) * (effSize[1] - newEffSize[1]);
 
       setScale(newScale);
-      setCenter([center[0] + centerOffsetX, center[1] + centerOffsetY]);
+      setCenter(
+        clampCenter(
+          [center[0] + centerOffsetX, center[1] + centerOffsetY],
+          newEffSize,
+        ),
+      );
     },
     [center, scale],
   );
@@ -194,7 +227,12 @@ export default function BifurcationCanvas({
       const worldDeltaY = deltaY * effSize[1];
 
       setWasDragged(true);
-      setCenter([center[0] + worldDeltaX, center[1] + worldDeltaY]);
+      setCenter(
+        clampCenter(
+          [center[0] + worldDeltaX, center[1] + worldDeltaY],
+          effSize,
+        ),
+      );
       setLastMousePos([e.clientX, e.clientY]);
     },
     [isDragging, lastMousePos, scale, center],
@@ -218,6 +256,39 @@ export default function BifurcationCanvas({
     canvas.addEventListener("mouseup", handleMouseUp);
     return () => canvas.removeEventListener("mouseup", handleMouseUp);
   }, [handleMouseUp]);
+
+  // Track hovered world coordinates for the on-screen readout
+  const handleHover = useCallback(
+    (e: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const aspectRatio = rect.width / rect.height;
+      const effSize: [number, number] = [scale * aspectRatio, scale];
+
+      const normalizedX = (e.clientX - rect.left) / rect.width;
+      const normalizedY = (rect.height - (e.clientY - rect.top)) / rect.height;
+
+      setMouseWorld([
+        center[0] + (normalizedX - 0.5) * effSize[0],
+        center[1] + (normalizedY - 0.5) * effSize[1],
+      ]);
+    },
+    [scale, center],
+  );
+  const handleHoverEnd = useCallback(() => setMouseWorld(null), []);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("mousemove", handleHover);
+    canvas.addEventListener("mouseleave", handleHoverEnd);
+    return () => {
+      canvas.removeEventListener("mousemove", handleHover);
+      canvas.removeEventListener("mouseleave", handleHoverEnd);
+    };
+  }, [handleHover, handleHoverEnd]);
 
   // Handle touch start
   const handleTouchStart = useCallback((e: TouchEvent) => {
@@ -259,7 +330,12 @@ export default function BifurcationCanvas({
       const worldDeltaY = deltaY * effSize[1];
 
       setWasTouched(true);
-      setCenter([center[0] + worldDeltaX, center[1] + worldDeltaY]);
+      setCenter(
+        clampCenter(
+          [center[0] + worldDeltaX, center[1] + worldDeltaY],
+          effSize,
+        ),
+      );
       setLastTouchPos([touch.clientX, touch.clientY]);
     },
     [scale, center, lastTouchPos],
@@ -497,6 +573,11 @@ export default function BifurcationCanvas({
             className="h-full bg-white/90"
             style={{ width: `${fullResProgress * 100}%` }}
           />
+        </div>
+      )}
+      {mouseWorld && (
+        <div className="pointer-events-none fixed right-2 bottom-2 rounded bg-black/50 px-2 py-1 font-mono text-sm text-white">
+          r={formatCoord(mouseWorld[0])}, x={formatCoord(mouseWorld[1])}
         </div>
       )}
     </>
